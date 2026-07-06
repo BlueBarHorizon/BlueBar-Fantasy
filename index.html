@@ -570,17 +570,17 @@ function cleanName(n) {
 }
 
 // ─── SCORING TIER (BlueBar odds-based win bonus) ───────────────────────────
-// -200 or longer  -> 0.5 win / 1 finish
-// -199 to -100    -> 1 win / 2 finish
-// +100 to +250    -> 2 win / 4 finish
-// +251 or longer  -> 4 win / 8 finish
+// -200 or longer  -> 0.5 win / 1 finish / 0.05 per 10 strikes,TD,KD
+// -199 to -100    -> 1 win / 2 finish / 0.1 per 10 strikes,TD,KD
+// +100 to +250    -> 2 win / 4 finish / 0.15 per 10 strikes,TD,KD
+// +251 or longer  -> 4 win / 8 finish / 0.2 per 10 strikes,TD,KD
 function oddsTier(odds) {
   const n = Number(odds);
-  if (!isFinite(n) || n === 0) return { base: 0, finish: 0 };
+  if (!isFinite(n) || n === 0) return { base: 0, finish: 0, bonus: 0 };
   if (n < 0) {
-    return n <= -200 ? { base: 0.5, finish: 1 } : { base: 1, finish: 2 };
+    return n <= -200 ? { base: 0.5, finish: 1, bonus: 0.05 } : { base: 1, finish: 2, bonus: 0.1 };
   }
-  return n <= 250 ? { base: 2, finish: 4 } : { base: 4, finish: 8 };
+  return n <= 250 ? { base: 2, finish: 4, bonus: 0.15 } : { base: 4, finish: 8, bonus: 0.2 };
 }
 
 function formatOdds(n) {
@@ -602,6 +602,7 @@ function parseEvents(rows) {
     odds: header.indexOf('Odds'),
     order: header.indexOf('Matchup Order'),
     override: header.indexOf('Tier Override'), // optional column, -1 if absent
+    maxPerEvent: header.indexOf('Max Picks Per Event'), // optional column, -1 if absent, defaults to 4
   };
   if ([idx.name, idx.status, idx.backup, idx.date, idx.fighter, idx.odds, idx.order].some(v => v === -1)) return [];
 
@@ -611,11 +612,13 @@ function parseEvents(rows) {
     if (!row || !row[idx.name]) continue;
     const name = row[idx.name].trim();
     if (!events[name]) {
+      const maxRaw = idx.maxPerEvent >= 0 ? Number(row[idx.maxPerEvent]) : NaN;
       events[name] = {
         name,
         status: (row[idx.status] || '').trim().toLowerCase(),
         backupMandatory: (row[idx.backup] || '').trim().toLowerCase() === 'yes',
         eventDate: (row[idx.date] || '').trim(),
+        maxPerEvent: (isFinite(maxRaw) && maxRaw > 0) ? maxRaw : 4,
         fighters: [],
       };
     }
@@ -724,15 +727,24 @@ function renderSubmitForm(event) {
 
   return `<div class="submit-wrap">
     <div class="rules-box">
-      <b>${event.name}</b> — pick 1-4 fighters. 10 total picks per month across all events.
-      If you go over your monthly budget, your highest-on-card picks (in order shown) count first.
-      ${event.backupMandatory ? '<br><b>Backup fighter is mandatory for this event.</b>' : '<br>Backup fighter is optional for this event.'}
+      <b>${event.name}</b> — you have 10 total picks for the month across all cards. The maximum number of fighters you can pick per event is ${event.maxPerEvent}. If you go over your total allotted budget, the fighters highest on the card you select (up until you reach 10) will be your selected fighters.
+      <br><br>
+      Only fight winners receive points — if your pick loses, they score 0.
+      <br><br>
+      <b>Scoring:</b><br>
+      -200 or longer: 0.5pt win, 0.05pt per 10 total strikes/takedown landed/knockdown<br>
+      -199 to -101: 1pt win, 0.1pt per 10 total strikes/takedown landed/knockdown<br>
+      +100 to +250: 2pt win, 0.15pt per 10 total strikes/takedown landed/knockdown<br>
+      +251 or longer: 4pt win, 0.2pt per 10 total strikes/takedown landed/knockdown<br>
+      A finish doubles the win bonus, but NOT the strike/takedown/knockdown bonus.
+      <br><br>
+      ${event.backupMandatory ? '<b>Backup fighter is mandatory for this event.</b>' : 'Backup fighter is optional for this event.'}
     </div>
 
     <div class="field-group">
       <label class="field-label">Discord Username</label>
       <input class="field-input" id="pf-discord" type="text" placeholder="e.g. gage_bbh" autocomplete="off">
-      <div class="budget-line" id="pf-budget">Enter your Discord username to check your remaining monthly picks.</div>
+      <div class="budget-line" id="pf-budget"></div>
     </div>
 
     <div class="field-group">
@@ -741,7 +753,7 @@ function renderSubmitForm(event) {
     </div>
 
     <div class="field-group">
-      <label class="field-label">Your Picks (select 1-4)</label>
+      <label class="field-label">Your Picks (select 1-${event.maxPerEvent})</label>
       <div id="pf-matchups">${matchupsHtml}</div>
     </div>
 
@@ -759,7 +771,7 @@ function renderSubmitForm(event) {
 }
 
 function fighterOptionHtml(f) {
-  const tierText = f.tierOverride || (() => { const t = oddsTier(f.odds); return `${t.base}pt win / ${t.finish}pt finish`; })();
+  const tierText = f.tierOverride || (() => { const t = oddsTier(f.odds); return `${t.base}pt win / ${t.finish}pt finish / ${t.bonus}pt per 10 strikes,TD,KD`; })();
   return `<label class="fighter-option" data-fighter="${f.name}">
     <input type="checkbox" value="${f.name}" class="pf-fighter-checkbox">
     <div class="fighter-option-text">
@@ -782,14 +794,14 @@ function wireSubmitForm(event, monthTabData) {
   function updateBudgetLine() {
     const selected = checkboxes.filter(c => c.checked).length;
     if (!monthlyChecked) {
-      budgetLine.textContent = 'Enter your Discord username to check your remaining monthly picks.';
+      budgetLine.textContent = '';
       budgetLine.className = 'budget-line';
       return;
     }
     const remaining = Math.max(0, 10 - monthlyUsed);
-    const overEvent = selected > 4;
+    const overEvent = selected > event.maxPerEvent;
     const overMonth = selected > remaining;
-    budgetLine.innerHTML = `Selected <b>${selected}/4</b> this event · <b>${remaining}</b> remaining of your 10 for the month`;
+    budgetLine.innerHTML = `Selected <b>${selected}/${event.maxPerEvent}</b> this event · <b>${remaining}</b> remaining of your 10 for the month`;
     budgetLine.className = 'budget-line' + (overEvent || overMonth ? ' warn' : '');
   }
 
@@ -806,7 +818,7 @@ function wireSubmitForm(event, monthTabData) {
       const label = cb.closest('.fighter-option');
       label.classList.toggle('selected', cb.checked);
       const selectedCount = checkboxes.filter(c => c.checked).length;
-      if (selectedCount > 4) {
+      if (selectedCount > event.maxPerEvent) {
         cb.checked = false;
         label.classList.remove('selected');
       }
@@ -826,7 +838,7 @@ function wireSubmitForm(event, monthTabData) {
     if (!discordUsername) return showMsg('Please enter your Discord username.', true);
     if (!email || !email.includes('@')) return showMsg('Please enter a valid email.', true);
     if (picks.length < 1) return showMsg('Select at least 1 fighter.', true);
-    if (picks.length > 4) return showMsg('Max 4 fighters for this event.', true);
+    if (picks.length > event.maxPerEvent) return showMsg(`Max ${event.maxPerEvent} fighters for this event.`, true);
     if (event.backupMandatory && !backup) return showMsg('A backup fighter is required for this event.', true);
     if (monthlyChecked && picks.length > Math.max(0, 10 - monthlyUsed)) {
       return showMsg(`You only have ${Math.max(0, 10 - monthlyUsed)} pick(s) left in your monthly budget.`, true);
@@ -916,12 +928,13 @@ async function init() {
 
     // Fetch Events config + open event (for Submit Picks tab)
     let openEvent = null;
+    let allEvents = [];
     let monthTabData = {};
     if (eventsSheet) {
       try {
         const eventRows = await fetchSheet(eventsSheet);
-        const events = parseEvents(eventRows);
-        openEvent = events.find(e => e.status === 'open') || null;
+        allEvents = parseEvents(eventRows);
+        openEvent = allEvents.find(e => e.status === 'open') || null;
         if (openEvent) {
           // Pull all current-month pick sheets so we can compute each member's remaining monthly budget
           for (const s of currentMonthPickSheets) {
@@ -929,6 +942,15 @@ async function init() {
           }
         }
       } catch (e) { /* Events tab optional; ignore if missing/misconfigured */ }
+    }
+
+    // Matches a Pick Sheet tab name back to its Events config row to check status.
+    // Tabs with no matching config (e.g. older events predating this system) are
+    // treated as visible, since there's nothing to hide them behind.
+    function statusForPickSheetTab(tabName) {
+      const rawName = tabName.replace(/\(.*?\)/g, '').replace(/picks/i, '').trim().toLowerCase();
+      const match = allEvents.find(e => e.name.trim().toLowerCase() === rawName);
+      return match ? match.status : null;
     }
 
     // Build tab definitions
@@ -954,10 +976,12 @@ async function init() {
       tabDefs.push({ label, type: 'leaderboard', sheet: s });
     });
 
-    // Current month pick sheets
+    // Current month pick sheets — hidden from public view while the event is still Open,
+    // so members can't metagame off each other's picks before the card closes.
     currentMonthPickSheets.forEach(s => {
       const label = s.replace(/picks/i, '').replace(/\(.*?\)/g, '').trim() + ' Picks';
-      tabDefs.push({ label, type: 'picks', sheet: s });
+      const hidden = statusForPickSheetTab(s) === 'open';
+      tabDefs.push({ label, type: 'picks', sheet: s, hidden });
     });
 
     if (!tabDefs.length) {
@@ -975,6 +999,11 @@ async function init() {
       if (t.type === 'submit') {
         view.innerHTML = renderSubmitForm(t.event);
         wireSubmitForm(t.event, monthTabData);
+        continue;
+      }
+
+      if (t.type === 'picks' && t.hidden) {
+        view.innerHTML = `<div class="status-box"><span class="icon">🔒</span>Picks for this event are hidden until it closes, so nobody can see everyone else's picks before making their own.</div>`;
         continue;
       }
 
