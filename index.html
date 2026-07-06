@@ -295,6 +295,114 @@
     color: var(--text-muted);
     margin-top: 2px;
   }
+
+  /* SUBMIT PICKS FORM */
+  .submit-wrap { padding: 12px 16px 24px; }
+  .rules-box {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+  .rules-box b { color: var(--text); }
+  .field-group { margin-bottom: 14px; }
+  .field-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .field-input {
+    width: 100%;
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 12px;
+    font-size: 14px;
+    color: var(--text);
+    font-family: var(--font);
+  }
+  .field-input:focus { outline: none; border-color: var(--blue-dim); }
+  .budget-line {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+  .budget-line b { color: var(--blue); }
+  .budget-line.warn b { color: var(--gold); }
+
+  .matchup-block {
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .fighter-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .fighter-option:active { background: var(--blue-glow); }
+  .fighter-option.selected { background: var(--blue-glow); border: 1px solid rgba(46,134,255,0.3); }
+  .fighter-option input { width: 18px; height: 18px; accent-color: var(--blue); flex-shrink: 0; }
+  .fighter-option-text { flex: 1; min-width: 0; }
+  .fighter-option-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .fighter-option-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .vs-divider {
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 2px 0;
+    letter-spacing: 0.1em;
+  }
+
+  .backup-select {
+    width: 100%;
+    background: var(--navy2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 12px;
+    font-size: 13px;
+    color: var(--text);
+    font-family: var(--font);
+  }
+
+  .submit-btn {
+    width: 100%;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 16px;
+    cursor: pointer;
+  }
+  .submit-btn:disabled { background: var(--blue-dim); opacity: 0.5; cursor: not-allowed; }
+  .submit-btn:active:not(:disabled) { opacity: 0.85; }
+
+  .form-msg {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .form-msg.error { background: rgba(255,82,82,0.1); color: #ff8a80; border: 1px solid rgba(255,82,82,0.25); }
+  .form-msg.success { background: rgba(0,230,118,0.1); color: var(--green); border: 1px solid rgba(0,230,118,0.25); }
 </style>
 </head>
 <body>
@@ -329,6 +437,9 @@ const SHEET_ID = '11Xl5syIonKARDupGor2pXt3k1JJ7InaSqCL2oMb4aeY';
 const API_KEY  = 'AIzaSyC09nEWKT530JIKF8uK9BHXjzk4ohPYXZQ';
 const BASE     = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}`;
 
+// PASTE your deployed Apps Script Web App URL here after deployment (see APPS_SCRIPT.gs)
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsP7PEZNodohFNOCUn1NYTbrdR43wX-SumodalFpEzVwJHdV3N5MCXVbnwo6I4237uRQ/exec';
+
 // ─── STATE ─────────────────────────────────────────────────────────────────
 let tabs    = [];
 let views   = {};
@@ -355,6 +466,7 @@ function isCareer(name)   { return /career/i.test(name); }
 function isMonthly(name)  { return /leaderboard/i.test(name) && /\d{4}/.test(name) && !/event/i.test(name) && !isEventLB(name); }
 function isEventLB(name)  { return /leaderboard/i.test(name) && /\d{2}-\d{2}/.test(name); }
 function isPickSheet(name){ return !/leaderboard/i.test(name) && !/career/i.test(name) && !/data/i.test(name) && !/template/i.test(name) && /\d{2}-\d{2}/.test(name); }
+function isEventsConfig(name) { return /^events$/i.test(name.trim()); }
 
 function eventDateFromName(name) {
   const m = name.match(/(\d{2})-(\d{2})-(\d{2,4})/);
@@ -457,6 +569,87 @@ function cleanName(n) {
   return (n || '').replace(/\s*\(\d+\)\s*$/, '').trim();
 }
 
+// ─── SCORING TIER (BlueBar odds-based win bonus) ───────────────────────────
+// -200 or longer  -> 0.5 win / 1 finish
+// -199 to -100    -> 1 win / 2 finish
+// +100 to +250    -> 2 win / 4 finish
+// +251 or longer  -> 4 win / 8 finish
+function oddsTier(odds) {
+  const n = Number(odds);
+  if (!isFinite(n) || n === 0) return { base: 0, finish: 0 };
+  if (n < 0) {
+    return n <= -200 ? { base: 0.5, finish: 1 } : { base: 1, finish: 2 };
+  }
+  return n <= 250 ? { base: 2, finish: 4 } : { base: 4, finish: 8 };
+}
+
+function formatOdds(n) {
+  const v = Number(n);
+  return v > 0 ? `+${v}` : `${v}`;
+}
+
+// ─── EVENTS CONFIG PARSER ───────────────────────────────────────────────────
+// Expects header row: Event Name | Status | Backup Mandatory | Event Date (MM-DD-YY) | Fighter | Odds | Matchup Order | Tier Override
+function parseEvents(rows) {
+  if (!rows || rows.length < 2) return [];
+  const header = rows[0].map(h => (h || '').trim());
+  const idx = {
+    name: header.indexOf('Event Name'),
+    status: header.indexOf('Status'),
+    backup: header.indexOf('Backup Mandatory'),
+    date: header.indexOf('Event Date (MM-DD-YY)'),
+    fighter: header.indexOf('Fighter'),
+    odds: header.indexOf('Odds'),
+    order: header.indexOf('Matchup Order'),
+    override: header.indexOf('Tier Override'), // optional column, -1 if absent
+  };
+  if ([idx.name, idx.status, idx.backup, idx.date, idx.fighter, idx.odds, idx.order].some(v => v === -1)) return [];
+
+  const events = {};
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row[idx.name]) continue;
+    const name = row[idx.name].trim();
+    if (!events[name]) {
+      events[name] = {
+        name,
+        status: (row[idx.status] || '').trim().toLowerCase(),
+        backupMandatory: (row[idx.backup] || '').trim().toLowerCase() === 'yes',
+        eventDate: (row[idx.date] || '').trim(),
+        fighters: [],
+      };
+    }
+    const override = idx.override >= 0 ? (row[idx.override] || '').trim() : '';
+    events[name].fighters.push({
+      name: cleanName(row[idx.fighter]),
+      odds: Number(row[idx.odds]) || 0,
+      order: Number(row[idx.order]) || 0,
+      tierOverride: override || null, // e.g. "5/10", takes precedence over odds-calculated tier
+    });
+  }
+  Object.values(events).forEach(ev => ev.fighters.sort((a, b) => a.order - b.order));
+  return Object.values(events);
+}
+
+// Count how many picks a discord username has already used this month,
+// by scanning existing Pick Sheet tabs for that event's month.
+function countMonthlyPicks(allTabData, discordUsername, monthMM) {
+  let count = 0;
+  const uname = (discordUsername || '').trim().toLowerCase();
+  for (const [tabName, rows] of Object.entries(allTabData)) {
+    const m = tabName.match(/\((\d{2})-(\d{2})\)/);
+    if (!m || m[1] !== monthMM) continue;
+    if (!rows || rows.length < 3) continue;
+    for (let r = 2; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || !row[0]) continue;
+      if (row[0].trim().toLowerCase() !== uname) continue;
+      count += row.slice(1).filter(v => (v || '').trim().toLowerCase() === 'p').length;
+    }
+  }
+  return count;
+}
+
 // ─── RENDERERS ─────────────────────────────────────────────────────────────
 function renderLoading() {
   return `<div class="status-box"><div class="spinner"></div>Loading standings…</div>`;
@@ -509,6 +702,164 @@ function renderPicks(data) {
   return `<div class="picks-list">${cards}</div>`;
 }
 
+// ─── SUBMIT PICKS FORM ──────────────────────────────────────────────────────
+function renderSubmitForm(event) {
+  const pairs = [];
+  for (let i = 0; i < event.fighters.length; i += 2) {
+    pairs.push([event.fighters[i], event.fighters[i + 1]]);
+  }
+
+  const matchupsHtml = pairs.map(([a, b]) => {
+    const optA = fighterOptionHtml(a);
+    const optB = b ? fighterOptionHtml(b) : '';
+    return `<div class="matchup-block">
+      ${optA}
+      ${b ? '<div class="vs-divider">VS</div>' + optB : ''}
+    </div>`;
+  }).join('');
+
+  const backupOptions = event.fighters.map(f =>
+    `<option value="${f.name}">${f.name} (${formatOdds(f.odds)})</option>`
+  ).join('');
+
+  return `<div class="submit-wrap">
+    <div class="rules-box">
+      <b>${event.name}</b> — pick 1-4 fighters. 10 total picks per month across all events.
+      If you go over your monthly budget, your highest-on-card picks (in order shown) count first.
+      ${event.backupMandatory ? '<br><b>Backup fighter is mandatory for this event.</b>' : '<br>Backup fighter is optional for this event.'}
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Discord Username</label>
+      <input class="field-input" id="pf-discord" type="text" placeholder="e.g. gage_bbh" autocomplete="off">
+      <div class="budget-line" id="pf-budget">Enter your Discord username to check your remaining monthly picks.</div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Email</label>
+      <input class="field-input" id="pf-email" type="email" placeholder="you@example.com" autocomplete="off">
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Your Picks (select 1-4)</label>
+      <div id="pf-matchups">${matchupsHtml}</div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Backup Fighter ${event.backupMandatory ? '(required)' : '(optional)'}</label>
+      <select class="backup-select" id="pf-backup">
+        <option value="">— Select backup —</option>
+        ${backupOptions}
+      </select>
+    </div>
+
+    <button class="submit-btn" id="pf-submit">Submit Picks</button>
+    <div id="pf-msg"></div>
+  </div>`;
+}
+
+function fighterOptionHtml(f) {
+  const tierText = f.tierOverride || (() => { const t = oddsTier(f.odds); return `${t.base}pt win / ${t.finish}pt finish`; })();
+  return `<label class="fighter-option" data-fighter="${f.name}">
+    <input type="checkbox" value="${f.name}" class="pf-fighter-checkbox">
+    <div class="fighter-option-text">
+      <div class="fighter-option-name">${f.name}</div>
+      <div class="fighter-option-meta">${formatOdds(f.odds)} · ${f.tierOverride ? f.tierOverride + ' (special rule)' : tierText}</div>
+    </div>
+  </label>`;
+}
+
+function wireSubmitForm(event, monthTabData) {
+  const monthMM = event.eventDate.split('-')[0];
+  const checkboxes = Array.from(document.querySelectorAll('.pf-fighter-checkbox'));
+  const budgetLine = document.getElementById('pf-budget');
+  const discordInput = document.getElementById('pf-discord');
+  const submitBtn = document.getElementById('pf-submit');
+  const msgBox = document.getElementById('pf-msg');
+  let monthlyUsed = 0;
+  let monthlyChecked = false;
+
+  function updateBudgetLine() {
+    const selected = checkboxes.filter(c => c.checked).length;
+    if (!monthlyChecked) {
+      budgetLine.textContent = 'Enter your Discord username to check your remaining monthly picks.';
+      budgetLine.className = 'budget-line';
+      return;
+    }
+    const remaining = Math.max(0, 10 - monthlyUsed);
+    const overEvent = selected > 4;
+    const overMonth = selected > remaining;
+    budgetLine.innerHTML = `Selected <b>${selected}/4</b> this event · <b>${remaining}</b> remaining of your 10 for the month`;
+    budgetLine.className = 'budget-line' + (overEvent || overMonth ? ' warn' : '');
+  }
+
+  discordInput.addEventListener('blur', () => {
+    const uname = discordInput.value.trim();
+    if (!uname) return;
+    monthlyUsed = countMonthlyPicks(monthTabData, uname, monthMM);
+    monthlyChecked = true;
+    updateBudgetLine();
+  });
+
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', () => {
+      const label = cb.closest('.fighter-option');
+      label.classList.toggle('selected', cb.checked);
+      const selectedCount = checkboxes.filter(c => c.checked).length;
+      if (selectedCount > 4) {
+        cb.checked = false;
+        label.classList.remove('selected');
+      }
+      updateBudgetLine();
+    });
+  });
+
+  updateBudgetLine();
+
+  submitBtn.addEventListener('click', async () => {
+    msgBox.innerHTML = '';
+    const discordUsername = discordInput.value.trim();
+    const email = document.getElementById('pf-email').value.trim();
+    const backup = document.getElementById('pf-backup').value;
+    const picks = checkboxes.filter(c => c.checked).map(c => c.value);
+
+    if (!discordUsername) return showMsg('Please enter your Discord username.', true);
+    if (!email || !email.includes('@')) return showMsg('Please enter a valid email.', true);
+    if (picks.length < 1) return showMsg('Select at least 1 fighter.', true);
+    if (picks.length > 4) return showMsg('Max 4 fighters for this event.', true);
+    if (event.backupMandatory && !backup) return showMsg('A backup fighter is required for this event.', true);
+    if (monthlyChecked && picks.length > Math.max(0, 10 - monthlyUsed)) {
+      return showMsg(`You only have ${Math.max(0, 10 - monthlyUsed)} pick(s) left in your monthly budget.`, true);
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+
+    try {
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ eventName: event.name, discordUsername, email, picks, backup: backup || null }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMsg('Picks submitted! You can resubmit any time before the event locks to change them.', false);
+      } else {
+        showMsg(data.error || 'Something went wrong submitting your picks.', true);
+      }
+    } catch (e) {
+      showMsg('Could not reach the submission service. Try again shortly.', true);
+    }
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit Picks';
+  });
+
+  function showMsg(text, isError) {
+    msgBox.innerHTML = `<div class="form-msg ${isError ? 'error' : 'success'}">${text}</div>`;
+  }
+}
+
 // ─── TAB SYSTEM ────────────────────────────────────────────────────────────
 function buildTabs(tabDefs) {
   const container = document.getElementById('tabs-container');
@@ -550,7 +901,8 @@ async function init() {
     // Classify sheets
     const careerSheet   = allSheets.find(isCareer);
     const monthlySheets = allSheets.filter(s => /leaderboard/i.test(s) && /20\d\d/i.test(s) && !isEventLB(s));
-    
+    const eventsSheet   = allSheets.find(isEventsConfig);
+
     // Get current month event leaderboards and pick sheets
     const currentMonthEventLBs = allSheets
       .filter(isEventLB)
@@ -562,9 +914,27 @@ async function init() {
       .filter(isCurrentMonth)
       .sort((a, b) => eventDateFromName(b) - eventDateFromName(a));
 
+    // Fetch Events config + open event (for Submit Picks tab)
+    let openEvent = null;
+    let monthTabData = {};
+    if (eventsSheet) {
+      try {
+        const eventRows = await fetchSheet(eventsSheet);
+        const events = parseEvents(eventRows);
+        openEvent = events.find(e => e.status === 'open') || null;
+        if (openEvent) {
+          // Pull all current-month pick sheets so we can compute each member's remaining monthly budget
+          for (const s of currentMonthPickSheets) {
+            try { monthTabData[s] = await fetchSheet(s); } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (e) { /* Events tab optional; ignore if missing/misconfigured */ }
+    }
+
     // Build tab definitions
     const tabDefs = [];
 
+    if (openEvent) tabDefs.push({ label: 'Submit Picks', type: 'submit', event: openEvent });
     if (careerSheet) tabDefs.push({ label: 'Career', type: 'career', sheet: careerSheet });
 
     // Monthly leaderboards sorted newest first
@@ -601,6 +971,13 @@ async function init() {
     for (let i = 0; i < tabDefs.length; i++) {
       const t    = tabDefs[i];
       const view = document.getElementById(`view-${i}`);
+
+      if (t.type === 'submit') {
+        view.innerHTML = renderSubmitForm(t.event);
+        wireSubmitForm(t.event, monthTabData);
+        continue;
+      }
+
       try {
         const rows = await fetchSheet(t.sheet);
         let html = '';
