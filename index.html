@@ -637,7 +637,7 @@ function countMonthlyPicks(allTabData, discordUsername, monthMM) {
   let count = 0;
   const uname = (discordUsername || '').trim().toLowerCase();
   for (const [tabName, rows] of Object.entries(allTabData)) {
-    const m = tabName.match(/\((\d{2})-(\d{2})\)/);
+    const m = tabName.match(/\((\d{2})-(\d{2})-(\d{2})\)/);
     if (!m || m[1] !== monthMM) continue;
     if (!rows || rows.length < 3) continue;
     for (let r = 2; r < rows.length; r++) {
