@@ -309,6 +309,16 @@
     margin-bottom: 14px;
   }
   .rules-box b { color: var(--text); }
+  .free-access-banner {
+    background: rgba(0,230,118,0.1);
+    border: 1px solid rgba(0,230,118,0.25);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--green);
+    margin-bottom: 10px;
+  }
   .field-group { margin-bottom: 14px; }
   .field-label {
     font-size: 11px;
@@ -603,6 +613,7 @@ function parseEvents(rows) {
     order: header.indexOf('Matchup Order'),
     override: header.indexOf('Tier Override'), // optional column, -1 if absent
     maxPerEvent: header.indexOf('Max Picks Per Event'), // optional column, -1 if absent, defaults to 4
+    freeAccess: header.indexOf('Free Access'), // optional column, -1 if absent, defaults to No
   };
   if ([idx.name, idx.status, idx.backup, idx.date, idx.fighter, idx.odds, idx.order].some(v => v === -1)) return [];
 
@@ -619,6 +630,7 @@ function parseEvents(rows) {
         backupMandatory: (row[idx.backup] || '').trim().toLowerCase() === 'yes',
         eventDate: (row[idx.date] || '').trim(),
         maxPerEvent: (isFinite(maxRaw) && maxRaw > 0) ? maxRaw : 4,
+        freeAccess: idx.freeAccess >= 0 && (row[idx.freeAccess] || '').trim().toLowerCase() === 'yes',
         fighters: [],
       };
     }
@@ -726,6 +738,7 @@ function renderSubmitForm(event) {
   ).join('');
 
   return `<div class="submit-wrap">
+    ${event.freeAccess ? '<div class="free-access-banner">🎉 This event is FREE to enter — no BlueBar Pro subscription required! Non-members are scored on their own separate leaderboard.</div>' : ''}
     <div class="rules-box">
       <b>${event.name}</b> — you have 10 total picks for the month across all cards. The maximum number of fighters you can pick per event is ${event.maxPerEvent}. If you go over your total allotted budget, the fighters highest on the card you select (up until you reach 10) will be your selected fighters.
       <br><br>
@@ -855,7 +868,12 @@ function wireSubmitForm(event, monthTabData) {
       });
       const data = await res.json();
       if (data.success) {
-        showMsg('Picks submitted! You can resubmit any time before the event locks to change them.', false);
+        const bracketNote = data.bracket === 'free'
+          ? " You've been placed in the Free bracket, scored separately from BlueBar Pro members."
+          : data.bracket === 'paid'
+            ? " You've been placed in the BlueBar Pro bracket."
+            : '';
+        showMsg(`Picks submitted!${bracketNote} You can resubmit any time before the event locks to change them.`, false);
       } else {
         showMsg(data.error || 'Something went wrong submitting your picks.', true);
       }
