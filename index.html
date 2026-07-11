@@ -558,8 +558,11 @@ function parsePickSheet(rows) {
 
     for (const f of fighters) {
       const val = (row[f.col] || '').trim().toLowerCase();
-      if (val === 'p' || val === 'b') {
-        const earned = val === 'p' ? f.pts : 0;
+      // Backups ('b') are intentionally excluded from the public display —
+      // they're only a reserve pick, and should never show up here unless/until
+      // you manually convert one to 'p' after a real no-contest/pull-out.
+      if (val === 'p') {
+        const earned = f.pts;
         total += earned;
         picks.push({ fighter: f.name, pts: f.pts, earned, pick: val });
       }
