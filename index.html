@@ -680,17 +680,19 @@ function parseEvents(rows) {
 
 // Count how many picks a discord username has already used this month,
 // by scanning existing Pick Sheet tabs for that event's month.
-function countMonthlyPicks(allTabData, discordUsername, monthMM) {
+function countMonthlyPicks(allTabData, discordUsername, monthMM, excludeTabNames) {
   let count = 0;
   const uname = (discordUsername || '').trim().toLowerCase();
+  const escaped = uname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const matchRe = new RegExp('^' + escaped + '(\\s|\\(|$)', 'i');
   for (const [tabName, rows] of Object.entries(allTabData)) {
+    if (excludeTabNames && excludeTabNames.has(tabName)) continue; // don't count picks about to be replaced by this same resubmission
     const m = tabName.match(/\((\d{2})-(\d{2})-(\d{2})\)/);
     if (!m || m[1] !== monthMM) continue;
     if (!rows || rows.length < 3) continue;
     for (let r = 2; r < rows.length; r++) {
       const row = rows[r];
-      if (!row || !row[0]) continue;
-      if (row[0].trim().toLowerCase() !== uname) continue;
+      if (!row || !row[0] || !matchRe.test(row[0].trim())) continue;
       count += row.slice(1).filter(v => (v || '').trim().toLowerCase() === 'p').length;
     }
   }
@@ -828,6 +830,10 @@ function fighterOptionHtml(f) {
 
 function wireSubmitForm(event, monthTabData) {
   const monthMM = event.eventDate.split('-')[0];
+  const ownTabNames = new Set([
+    `${event.name} (${event.eventDate})`,
+    `${event.name} Free (${event.eventDate})`,
+  ]);
   const checkboxes = Array.from(document.querySelectorAll('.pf-fighter-checkbox'));
   const budgetLine = document.getElementById('pf-budget');
   const discordInput = document.getElementById('pf-discord');
@@ -853,7 +859,7 @@ function wireSubmitForm(event, monthTabData) {
   discordInput.addEventListener('blur', () => {
     const uname = discordInput.value.trim();
     if (!uname) return;
-    monthlyUsed = countMonthlyPicks(monthTabData, uname, monthMM);
+    monthlyUsed = countMonthlyPicks(monthTabData, uname, monthMM, ownTabNames);
     monthlyChecked = true;
     updateBudgetLine();
   });
