@@ -603,6 +603,33 @@ function formatOdds(n) {
 
 // ─── EVENTS CONFIG PARSER ───────────────────────────────────────────────────
 // Expects header row: Event Name | Status | Backup Mandatory | Event Date (MM-DD-YY) | Fighter | Odds | Matchup Order | Tier Override
+// Normalizes an Events-tab date value to MM-DD-YY, tolerating whatever format
+// Sheets actually rendered it as (e.g. if the cell got auto-converted to a
+// real date instead of staying plain text, it might come back as "7/18/2026").
+function normalizeEventDate(raw) {
+  const str = String(raw || '').trim();
+  if (/^\d{2}-\d{2}-\d{2}$/.test(str)) return str; // already correct
+
+  let m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // M/D/YYYY
+  if (m) return formatMMDDYY(Number(m[1]), Number(m[2]), Number(m[3]));
+
+  m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // YYYY-MM-DD
+  if (m) return formatMMDDYY(Number(m[2]), Number(m[3]), Number(m[1]));
+
+  const parsed = new Date(str); // last resort
+  if (!isNaN(parsed.getTime())) {
+    return formatMMDDYY(parsed.getMonth() + 1, parsed.getDate(), parsed.getFullYear());
+  }
+  return null;
+}
+
+function formatMMDDYY(month, day, year) {
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  const yy = String(year).slice(-2);
+  return `${mm}-${dd}-${yy}`;
+}
+
 function parseEvents(rows) {
   if (!rows || rows.length < 2) return [];
   const header = rows[0].map(h => (h || '').trim());
@@ -631,7 +658,7 @@ function parseEvents(rows) {
         name,
         status: (row[idx.status] || '').trim().toLowerCase(),
         backupMandatory: (row[idx.backup] || '').trim().toLowerCase() === 'yes',
-        eventDate: (row[idx.date] || '').trim(),
+        eventDate: normalizeEventDate(row[idx.date]),
         maxPerEvent: (isFinite(maxRaw) && maxRaw > 0) ? maxRaw : 4,
         freeAccess: idx.freeAccess >= 0 && (row[idx.freeAccess] || '').trim().toLowerCase() === 'yes',
         fighters: [],
@@ -646,7 +673,9 @@ function parseEvents(rows) {
     });
   }
   Object.values(events).forEach(ev => ev.fighters.sort((a, b) => a.order - b.order));
-  return Object.values(events);
+  // Drop any event whose date genuinely couldn't be understood, rather than
+  // letting a bad Events-tab entry crash the whole Submit Picks tab.
+  return Object.values(events).filter(ev => ev.eventDate);
 }
 
 // Count how many picks a discord username has already used this month,
