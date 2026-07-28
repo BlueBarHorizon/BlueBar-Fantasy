@@ -583,15 +583,15 @@ function cleanName(n) {
 }
 
 // ─── SCORING TIER (BlueBar odds-based win bonus) ───────────────────────────
-// -200 or longer  -> 0.5 win / 1 finish / 0.05 per 10 strikes,TD,KD
-// -199 to -100    -> 1 win / 2 finish / 0.1 per 10 strikes,TD,KD
+// -251 or longer  -> 0.5 win / 1 finish / 0.05 per 10 strikes,TD,KD
+// -250 to -100    -> 1 win / 2 finish / 0.1 per 10 strikes,TD,KD
 // +100 to +250    -> 2 win / 4 finish / 0.15 per 10 strikes,TD,KD
 // +251 or longer  -> 4 win / 8 finish / 0.2 per 10 strikes,TD,KD
 function oddsTier(odds) {
   const n = Number(odds);
   if (!isFinite(n) || n === 0) return { base: 0, finish: 0, bonus: 0 };
   if (n < 0) {
-    return n <= -200 ? { base: 0.5, finish: 1, bonus: 0.05 } : { base: 1, finish: 2, bonus: 0.1 };
+    return n <= -250 ? { base: 0.5, finish: 1, bonus: 0.05 } : { base: 1, finish: 2, bonus: 0.1 };
   }
   return n <= 250 ? { base: 2, finish: 4, bonus: 0.15 } : { base: 4, finish: 8, bonus: 0.2 };
 }
@@ -779,7 +779,7 @@ function renderSubmitForm(event) {
       Only fight winners receive points — if your pick loses, they score 0.
       <br><br>
       <b>Scoring:</b><br>
-      -200 or longer: 0.5pt win, 0.05pt per 10 total strikes/takedown landed/knockdown<br>
+      -250 or longer: 0.5pt win, 0.05pt per 10 total strikes/takedown landed/knockdown<br>
       -199 to -101: 1pt win, 0.1pt per 10 total strikes/takedown landed/knockdown<br>
       +100 to +250: 2pt win, 0.15pt per 10 total strikes/takedown landed/knockdown<br>
       +251 or longer: 4pt win, 0.2pt per 10 total strikes/takedown landed/knockdown<br>
